@@ -17,3 +17,5 @@ time_utc,book,strategy,exec_day,coin,side,qty,px,mid,notional,fee,pnl,reason,sta
 2026-10-12T00:02:10+00:00,paper_rolling,momentum,2026-10-12,INIT,BUY,94.0,0.11832457,0.118295,11.12250993,0.00500513,0.0,peringkat 6,paper
 2026-10-14T00:02:11+00:00,paper_rolling,momentum,2026-10-14,GRASS,SELL,16.6,0.72627838,0.72646,12.05622119,0.0054253,1.93484091,peringkat 64 > 15,paper
 2026-10-14T00:02:11+00:00,paper_rolling,momentum,2026-10-14,ZK,BUY,634.0,0.01628407,0.01628,10.32410038,0.00464585,0.0,peringkat 5,paper
+2026-10-15T00:02:10+00:00,paper_rolling,momentum,2026-10-15,ZRO,SELL,5.2,1.89757549,1.89805,9.86739254,0.00444033,-0.40676001,peringkat 16 > 15,paper
+2026-10-15T00:02:10+00:00,paper_rolling,momentum,2026-10-15,TIA,BUY,18.2,0.55457861,0.55444,10.0933307,0.004542,0.0,peringkat 5,paper
