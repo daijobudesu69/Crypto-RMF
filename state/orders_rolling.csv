@@ -27,3 +27,5 @@ time_utc,book,strategy,exec_day,coin,side,qty,px,mid,notional,fee,pnl,reason,sta
 2026-10-17T00:02:11+00:00,paper_rolling,momentum,2026-10-17,AZTEC,BUY,506.0,0.01989997,0.019895,10.06938672,0.00453122,0.0,peringkat 6,paper
 2026-10-17T00:02:11+00:00,paper_rolling,momentum,2026-10-17,ZRO,BUY,5.0,2.04911215,2.0486,10.24556075,0.0046105,0.0,peringkat 7,paper
 2026-10-17T00:02:11+00:00,paper_rolling,momentum,2026-10-17,INJ,BUY,1.2,8.71747883,8.7153,10.46097459,0.00470744,0.0,peringkat 8,paper
+2026-10-18T00:02:11+00:00,paper_rolling,momentum,2026-10-18,ZRO,SELL,5.0,1.86663322,1.8671,9.33316612,0.00419992,-0.92387753,peringkat 32 > 15,paper
+2026-10-18T00:02:11+00:00,paper_rolling,momentum,2026-10-18,APEX,BUY,42.0,0.24376093,0.2437,10.23795885,0.00460708,0.0,peringkat 9,paper
