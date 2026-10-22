@@ -33,3 +33,7 @@ time_utc,book,strategy,exec_day,coin,side,qty,px,mid,notional,fee,pnl,reason,sta
 2026-10-19T00:02:11+00:00,paper_rolling,momentum,2026-10-19,XMR,BUY,0.017,600.10498875,599.955,10.20178481,0.0045908,0.0,peringkat 6,paper
 2026-10-21T00:02:11+00:00,paper_rolling,momentum,2026-10-21,APEX,SELL,42.0,0.23789551,0.237955,9.99161147,0.00449623,-0.26543313,peringkat 16 > 15,paper
 2026-10-21T00:02:11+00:00,paper_rolling,momentum,2026-10-21,AERO,BUY,12.0,0.88875713,0.888535,10.6650856,0.00479929,0.0,peringkat 7,paper
+2026-10-22T00:02:11+00:00,paper_rolling,momentum,2026-10-22,AERO,SELL,12.0,0.81850532,0.81871,9.82206387,0.00441993,-0.85518831,peringkat 25 > 15,paper
+2026-10-22T00:02:11+00:00,paper_rolling,momentum,2026-10-22,MET,SELL,23.0,0.35853035,0.35862,8.24619794,0.00371079,-1.71581484,peringkat 141 > 15,paper
+2026-10-22T00:02:11+00:00,paper_rolling,momentum,2026-10-22,kPEPE,BUY,2175.0,0.00462316,0.004622,10.05536321,0.00452491,0.0,peringkat 7,paper
+2026-10-22T00:02:11+00:00,paper_rolling,momentum,2026-10-22,WLD,BUY,17.2,0.58678666,0.58664,10.09273055,0.00454173,0.0,peringkat 9,paper
