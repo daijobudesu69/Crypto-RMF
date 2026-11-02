@@ -3,6 +3,25 @@
 Setiap perubahan parameter strategi di `config.yaml` dicatat di sini dengan tanggal
 dan alasan. Tanpa catatan, forward test tidak bisa dibandingkan dengan simulasi.
 
+## rmf-0.1.8 — 2026-11-02
+
+Laporan saja; aturan strategi TIDAK berubah.
+- Alasan: `paper_equity` hanya buku momentum, jadi saat filter BTC OFF angkanya diam
+  (165.84 sejak 30 Okt) walau trade flush sudah untung. Ekuitas paper sebenarnya =
+  momentum + PnL flush (yang sejak awal dipakai untuk sizing flush).
+- `equity.csv`: kolom baru `total_equity` di akhir. File lama dimigrasi di tempat
+  (tidak dirotasi ke `.v1`); baris lama diisi `paper_equity + flush_equity`.
+  Mekanisme umum di `rmf/store.py`: header lama yang awalan dari kolom baru ->
+  tulis ulang dengan header baru, kolom baru dari `BACKFILL` atau kosong. Sheets:
+  kolom ditambah di kanan, baris lama di Sheets tetap kosong.
+- Pesan Telegram harian diformat ulang: total paper (PnL + DD dari puncak total) di
+  atas, lalu "Momentum Report" dan "Flush Report", masing-masing dengan posisi long
+  terbuka + gerak harga sejak entry, urut dari yang paling untung; flush juga
+  menampilkan trade yang tutup 24 jam terakhir. DD ditulis sebagai besaran positif.
+- Pesan exit flush menambah baris total paper (momentum + flush).
+- `check_exit` flush menyimpan close candle 4h terakhir sebagai `last_px` posisi,
+  supaya ekuitas flush tidak dinilai di harga entry saat mid HYPE gagal diambil.
+
 ## rmf-0.1.7 — 2026-10-08
 
 Universe dinamis untuk perbandingan; buku utama TIDAK berubah (`universe.mode: static`).

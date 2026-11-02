@@ -1,5 +1,8 @@
+import os
+
 import numpy as np
 import pandas as pd
+import pytest
 
 from rmf import book as bk
 from rmf import stoprules
@@ -70,3 +73,28 @@ def test_sleeve_compares_1x_with_basket(cfg):
     assert raw.months_behind_streak >= 9 and sleeve.months_behind_streak == 0
     cash = stoprules.sleeve_index(pd.Series([200.0, 200.0, 210.0], days[:3]), pd.Series([0.0, 0.5, 0.5], days[:3]))
     assert list(cash.round(6)) == [1.0, 1.0, 1.1]
+
+
+def test_equity_csv_new_column_migrated_in_place(state_dir):
+    """Kolom baru di akhir (total_equity): riwayat lama tetap di equity.csv (tidak
+    dirotasi ke .v1), baris lama diisi paper_equity + flush_equity."""
+    import csv
+
+    from rmf import store
+    old = store.COLUMNS["equity"][:-1]
+    assert store.COLUMNS["equity"][-1] == "total_equity"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    p = state_dir / "equity.csv"
+    with open(p, "w", encoding="utf-8", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=old, lineterminator="\n")
+        w.writeheader()
+        w.writerow({"exec_day": "2026-10-30", "paper_equity": "165.84176586", "flush_equity": "-2.6234508"})
+        w.writerow({"exec_day": "2026-10-31", "paper_equity": "165.84176586", "flush_equity": ""})
+    store.append("equity", {"exec_day": "2026-11-01", "paper_equity": 165.84, "flush_equity": 2.72,
+                            "total_equity": 168.56}, mirror=False)
+    rows = store.read("equity")
+    assert [r["exec_day"] for r in rows] == ["2026-10-30", "2026-10-31", "2026-11-01"]
+    assert float(rows[0]["total_equity"]) == pytest.approx(165.84176586 - 2.6234508)
+    assert float(rows[1]["total_equity"]) == pytest.approx(165.84176586)
+    assert rows[2]["total_equity"] == "168.56"
+    assert sorted(os.listdir(state_dir)) == ["equity.csv"]
