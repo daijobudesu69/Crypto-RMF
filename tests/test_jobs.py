@@ -53,7 +53,7 @@ def test_momentum_day_once(state_dir, cfg, world):
     eq = store.read("equity")
     assert len(eq) == 1 and eq[0]["regime_on"] == "1"
     # pesan harian langsung dikirim (bukan menunggu akhir siklus)
-    assert any("momentum harian" in m["text"] for m in c.outbox.sent)
+    assert any("laporan harian" in m["text"] for m in c.outbox.sent)
     assert store.load_json("momentum_paper.json").get("pending_record") is None
     # siklus berikutnya di hari yang sama: tidak ada apa-apa
     assert jobs.run_momentum(ctx_at(cfg, info, kl, now + dt.timedelta(minutes=10))) is None
@@ -200,3 +200,40 @@ def test_pending_record_resumed_next_cycle(state_dir, cfg, world, monkeypatch):
     assert out is not None and len(store.read("equity")) == 1
     assert len(store.read("orders")) == n_orders          # tidak trading ulang
     assert store.load_json("momentum_paper.json").get("pending_record") is None
+
+
+def test_daily_report_total_equity_and_sections(state_dir, cfg, world):
+    """Laporan harian: total paper = momentum + flush, satu blok per strategi dengan
+    posisi terbuka + persen sejak entry; kolom total_equity di equity.csv sama."""
+    info, kl = world
+    jobs.run_flush(ctx_at(cfg, info, kl, dt.datetime(2026, 10, 4, 0, 5, tzinfo=dt.timezone.utc)))
+    fb = store.load_json("flush_paper.json")["book"]
+    assert fb["positions"]
+    c = ctx_at(cfg, info, kl, dt.datetime(2026, 10, 4, 0, 12, tzinfo=dt.timezone.utc))
+    out = jobs.run_momentum(c)
+    msg = notify.plain([m["text"] for m in c.outbox.sent if "laporan harian" in m["text"]][0])
+    row = store.read("equity")[-1]
+    total = float(row["paper_equity"]) + float(row["flush_equity"])
+    assert float(row["total_equity"]) == pytest.approx(total, abs=1e-6)
+    assert f"Total {notify.usd(total)} USDC" in msg
+    assert "Momentum Report" in msg and "Flush Report" in msg
+    long_lines = [x for x in msg.splitlines() if x.startswith("🟢 Long")]
+    assert len(long_lines) == 2                                   # momentum + flush
+    assert long_lines[0].startswith(f"🟢 Long ({len(out['paper']['positions'])}):")
+    assert long_lines[1].startswith(f"🟢 Long ({len(fb['positions'])}):")
+    assert all("%)" in x for x in long_lines)
+    assert len(msg) < 4000
+
+
+def test_flush_exit_message_shows_total(state_dir, cfg, world):
+    info, kl = world
+    jobs.run_flush(ctx_at(cfg, info, kl, dt.datetime(2026, 10, 4, 0, 5, tzinfo=dt.timezone.utc)))
+    for k, df in info.c4h.items():
+        nxt = pd.DataFrame({"ts": [SIGNAL_BAR + pd.Timedelta(hours=4), SIGNAL_BAR + pd.Timedelta(hours=8)],
+                            "open": [99.5, 100.0], "high": [100.0, 130.0], "low": [99.0, 99.8],
+                            "close": [99.8, 120.0], "volume": [100.0, 100.0]})
+        info.c4h[k] = pd.concat([df, nxt], ignore_index=True)
+    c = ctx_at(cfg, info, kl, dt.datetime(2026, 10, 4, 8, 5, tzinfo=dt.timezone.utc))
+    jobs.run_flush(c)
+    exits = [m["text"] for m in c.outbox.sent + c.outbox.items if "exit" in m["text"]]
+    assert exits and "Total paper" in exits[0] and "momentum 200.00" in exits[0]

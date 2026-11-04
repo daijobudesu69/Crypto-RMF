@@ -148,6 +148,7 @@ def check_exit(pos: dict, bars: pd.DataFrame, max_bars: int):
         o, h, l, c = float(b["open"]), float(b["high"]), float(b["low"]), float(b["close"])
         pos["bars_held"] = int(pos.get("bars_held", 0)) + 1
         pos["last_bar"] = pd.Timestamp(b["ts"]).isoformat()
+        pos["last_px"] = c                    # harga cadangan kalau mid HYPE tidak tersedia
         px = why = None
         if o <= stop:
             px, why = o, "SL (gap)"

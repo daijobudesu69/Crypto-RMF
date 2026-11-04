@@ -5,7 +5,7 @@ manual saat watcher jalan.
 
 | File | Isi |
 |---|---|
-| `equity.csv` | 1 baris per hari: rezim BTC, ekuitas paper/live, flush, basket "beli semua koin", DD, telat eksekusi |
+| `equity.csv` | 1 baris per hari: rezim BTC, ekuitas paper/live, flush, basket "beli semua koin", DD, telat eksekusi. `paper_equity` = buku momentum saja; `flush_equity` = PnL buku flush (mulai dari 0); `total_equity` = keduanya dijumlah (ekuitas paper sebenarnya) |
 | `orders.csv` | semua order (paper & live, momentum & flush) |
 | `ranking.csv` | peringkat 1–20 per hari + apakah dipegang paper/live |
 | `flush_signals.csv` | jumlah sinyal di setiap candle 4h (event kalau ≥ 10) |

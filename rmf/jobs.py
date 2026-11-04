@@ -367,6 +367,7 @@ def _record_day(ctx: Ctx, paper: dict, view: mom.View, mids: dict, out: dict) ->
     lv = out.get("live") or {}
     ls = store.load_json("momentum_live.json") or {}
     fb = (store.load_json("flush_paper.json") or {}).get("book")
+    flush_eq = bk.equity(fb, mids) if fb else 0.0
     peak = float(b.get("peak_equity", rec["equity"]))
     store.append("equity", {
         "exec_day": view.exec_day, "time_utc": rec["time_utc"], "regime_on": view.regime_on,
@@ -374,10 +375,11 @@ def _record_day(ctx: Ctx, paper: dict, view: mom.View, mids: dict, out: dict) ->
         "paper_gross": rec["gross"], "paper_positions": rec["positions"],
         "live_equity": lv.get("equity_after", ls.get("last_equity")) if ctx.ctrl.live else "",
         "live_positions": len(ls.get("positions") or {}) if ctx.ctrl.live else "",
-        "flush_equity": bk.equity(fb, mids) if fb else 0.0,
+        "flush_equity": flush_eq,
         "bench_ret": view.bench_ret, "bench_index": paper["bench_index"], "paper_peak": peak,
         "paper_dd_pct": (rec["equity"] / peak - 1) * 100 if peak else 0.0, "delay_min": rec["delay_min"],
-        "live_gross": lv.get("gross_after", ls.get("last_gross")) if ctx.ctrl.live else ""})
+        "live_gross": lv.get("gross_after", ls.get("last_gross")) if ctx.ctrl.live else "",
+        "total_equity": rec["equity"] + flush_eq})
     held_live = set((ls.get("positions") or {}).keys())
     for c, r, x in view.ranking[: max(20, cfg.momentum.exit_rank)]:
         store.append("ranking", {"exec_day": view.exec_day, "rank": r, "coin": c, "ret_14d_pct": round(x * 100, 2),
@@ -553,62 +555,125 @@ def _rolling_lines(rl: dict, static_eq: float) -> list:
     return lines
 
 
+POS_NAMES_MAX = 15        # batas koin per baris posisi (pesan Telegram maks 4000 karakter)
+
+
+def _pos_list(book: dict, mids: dict) -> str:
+    """'ZEC (+4.4%) XMR (-2.6%) ...', urut dari yang paling untung. Persen = gerak
+    harga sejak entry (mid sekarang, atau harga terakhir yang diketahui)."""
+    rows = []
+    for coin, p in book["positions"].items():
+        px = mids.get(coin) or p.get("last_px") or p["entry_px"]
+        rows.append((float(px) / float(p["entry_px"]) - 1, coin))
+    rows.sort(key=lambda x: (-x[0], x[1]))
+    s = " ".join(f"{notify.esc(c)} ({r * 100:+.1f}%)" for r, c in rows[:POS_NAMES_MAX])
+    return s + (f" +{len(rows) - POS_NAMES_MAX} lagi" if len(rows) > POS_NAMES_MAX else "")
+
+
+def _total_peak() -> float:
+    """Puncak ekuitas gabungan (momentum + flush) dari snapshot harian equity.csv."""
+    vals = [v for v in (store.total_equity(r) for r in store.read("equity")) if v is not None]
+    return max(vals, default=0.0)
+
+
+def _flush_closed_since(since: pd.Timestamp) -> list:
+    out = []
+    for r in store.read("flush_trades"):
+        try:
+            if pd.Timestamp(r["exit_time"]) > since:
+                out.append(r)
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
+def _dd(pct: float) -> str:
+    """Drawdown dari puncak sebagai besaran positif: -22.2 -> '22.2%'."""
+    return f"{abs(min(pct, 0.0)):.1f}%"
+
+
 def daily_message(ctx: Ctx, view: mom.View, out: dict, paper: dict, mids: dict) -> str:
-    """Ringkasan harian, tata letak mengikuti heartbeat Crypto-MEX (sementara,
-    format final RMF dibahas nanti)."""
+    """Laporan harian: total paper (momentum + flush) di atas, lalu satu blok per
+    strategi dengan posisi terbuka dan gerak harganya sejak entry."""
     cfg = ctx.cfg
     p = out["paper"]
     b = paper["book"]
-    peak = float(b.get("peak_equity", p["equity"]))
-    dd = (p["equity"] / peak - 1) * 100 if peak else 0
-    ret = (p["equity"] / float(b.get("start_capital", cfg.capital_usdc)) - 1) * 100
-    reg = "ON" if view.regime_on else "OFF (semua dijual, cash)"
-    sells = [f"{f['coin']} ({f['reason']}, {f.get('net_pnl', 0):+.2f})" for f in p["fills"] if f["side"] == "SELL"]
-    buys = [f["coin"] for f in p["fills"] if f["side"] == "BUY"]
-    top = " ".join(c for c, r, _ in view.ranking[: cfg.momentum.n_hold])
-    res = " ".join(c for c, r, _ in view.ranking[cfg.momentum.n_hold: cfg.momentum.exit_rank])
-    t = pd.Timestamp(ctx.now).tz_convert("UTC").strftime("%Y-%m-%d %H:%M")
+    start = float(b.get("start_capital", cfg.capital_usdc))
+    m_peak = float(b.get("peak_equity", p["equity"]))
+    m_dd = (p["equity"] / m_peak - 1) * 100 if m_peak else 0.0
+    m_ret = (p["equity"] / start - 1) * 100 if start else 0.0
+    fb = (store.load_json("flush_paper.json") or {}).get("book")
+    f_eq = bk.equity(fb, mids) if fb else 0.0
+    total = p["equity"] + f_eq
+    t_peak = max(_total_peak(), total, start)
+    t_ret = (total / start - 1) * 100 if start else 0.0
+    t_dd = (total / t_peak - 1) * 100 if t_peak else 0.0
+
     day_n = ""
     if cfg.forward_start:
         n = (pd.Timestamp(view.exec_day) - pd.Timestamp(cfg.forward_start)).days + 1
         day_n = f" · hari ke-{n}"
+    gap = (view.btc_close / view.btc_ema - 1) * 100 if view.btc_ema else 0.0
+    reg = "🟢 ON" if view.regime_on else "🔴 OFF"
     lines = [
-        f"📊 <b>RMF forward test — momentum harian{day_n}</b>",
-        f"<code>{t} UTC · candle {view.last_close_day} · telat {out['delay_min']:.0f} menit</code>",
+        f"📊 <b>RMF paper — laporan harian{day_n}</b>",
+        f"<code>{notify.wib(ctx.now)} · candle {view.last_close_day} · telat {out['delay_min']:.0f} mnt</code>",
         "",
-        f"  filter BTC: <b>{reg}</b> ({view.btc_close:,.0f} vs EMA50 {view.btc_ema:,.0f})",
-        f"  top {cfg.momentum.n_hold}: {notify.esc(top) or '-'}",
-        f"  cadangan {cfg.momentum.n_hold + 1}–{cfg.momentum.exit_rank}: {notify.esc(res) or '-'}",
+        f"💰 <b>Total {notify.usd(total)} USDC</b> · PnL {t_ret:+.1f}% · DD {_dd(t_dd)}",
+        f"   momentum {notify.usd(p['equity'])} + flush {f_eq:+.2f}",
         "",
-        f"  paper: <b>{notify.usd(p['equity'])} USDC</b> ({ret:+.2f}% sejak mulai · DD {dd:+.1f}%)",
-        f"  posisi: {len(p['positions'])} · gross {notify.usd(p['gross'])} · {notify.usd(p['per_coin'])}/koin",
+        f"<b>Momentum Report</b> · {m_ret:+.1f}% · DD {_dd(m_dd)}",
+        f"Filter BTC {reg} · {view.btc_close:,.0f} vs EMA50 {view.btc_ema:,.0f} ({gap:+.1f}%)",
     ]
+    mbook = {"positions": {c: b["positions"][c] for c in p["positions"] if c in b["positions"]}}
+    if mbook["positions"]:
+        lines.append(f"🟢 Long ({len(mbook['positions'])}): {_pos_list(mbook, mids)}")
+        lines.append(f"   gross {notify.usd(p['gross'])} · {notify.usd(p['per_coin'])}/koin")
+    elif not view.regime_on:
+        lines.append("⚪ Cash · masuk lagi kalau BTC close > EMA50")
+    else:
+        lines.append("⚪ Tidak ada posisi")
+    sells = [f"{f['coin']} {f.get('net_pnl', 0):+.2f} ({f['reason']})" for f in p["fills"] if f["side"] == "SELL"]
+    buys = [f["coin"] for f in p["fills"] if f["side"] == "BUY"]
     if sells:
-        lines.append("  jual: " + notify.esc("; ".join(sells)))
+        lines.append(f"🔴 Jual: {notify.esc(' · '.join(sells))}")
     if buys:
-        lines.append("  beli: " + notify.esc(", ".join(buys)))
+        lines.append(f"➕ Beli: {notify.esc(' '.join(buys))}")
     if not sells and not buys:
-        lines.append("  tidak ada perubahan posisi")
+        lines.append("   tidak ada perubahan posisi")
+    top = " ".join(c for c, r, _ in view.ranking[: cfg.momentum.n_hold])
+    res = " ".join(c for c, r, _ in view.ranking[cfg.momentum.n_hold: cfg.momentum.exit_rank])
+    lines.append(f"   top {cfg.momentum.n_hold}: {notify.esc(top) or '-'}")
+    lines.append(f"   cadangan {cfg.momentum.n_hold + 1}–{cfg.momentum.exit_rank}: {notify.esc(res) or '-'}")
     for w in p["warn"]:
         lines.append("⚠️ " + notify.esc(w))
-    if view.bench_net:
-        lines.append(f"  basket semua koin ({view.bench_n} koin, 1x): {view.bench_ret * 100:+.2f}%")
+
+    lines += ["", f"<b>Flush Report</b> (4h) · PnL {f_eq:+.2f} USDC"]
+    if fb and fb.get("positions"):
+        lines.append(f"🟢 Long ({len(fb['positions'])}): {_pos_list(fb, mids)}")
     else:
-        lines.append(f"  basket semua koin ({view.bench_n} koin, 1x): {view.bench_gross * 100:+.2f}% "
+        lines.append("⚪ Tidak ada posisi")
+    closed = _flush_closed_since(pd.Timestamp(ctx.now).tz_convert("UTC") - pd.Timedelta(hours=24))
+    if closed:
+        tot = sum(float(r["pnl_net"] or 0) for r in closed)
+        items = " · ".join(f"{r['coin']} {r['reason']} {float(r['pnl_net'] or 0):+.2f}" for r in closed)
+        lines.append(f"✅ Tutup 24 jam: {notify.esc(items)} (total {tot:+.2f})")
+
+    lines.append("")
+    if view.bench_net:
+        lines.append(f"Basket semua koin ({view.bench_n} koin, 1x): {view.bench_ret * 100:+.2f}%")
+    else:
+        lines.append(f"Basket semua koin ({view.bench_n} koin, 1x): {view.bench_gross * 100:+.2f}% "
                      "(sebelum funding)")
-    fs = store.load_json("flush_paper.json") or {}
-    if fs.get("book"):
-        fb = fs["book"]
-        lines.append(f"  flush paper: {len(fb['positions'])} posisi · PnL {notify.usd(bk.equity(fb, mids))} USDC")
     if paper.get("months_behind"):
-        lines.append(f"  kalah dari basket {paper['months_behind']} bulan berturut-turut "
+        lines.append(f"Kalah dari basket {paper['months_behind']} bulan berturut-turut "
                      f"(batas {cfg.stop_rules.underperform_months})")
     if out.get("rolling"):
         lines += _rolling_lines(out["rolling"], p["equity"])
     if out["live"] is not None:
         lines += ["", _live_message(out["live"], ctx, short=True)]
     else:
-        lines.append(f"  live: mode <b>{ctx.ctrl.momentum}</b>")
+        lines.append(f"Live: mode <b>{ctx.ctrl.momentum}</b>")
     return "\n".join(lines)
 
 
@@ -756,8 +821,22 @@ def _flush_exits(ctx: Ctx, st: dict, t: str) -> list:
             rm = r["r_multiple"]
             rtxt = f" ({rm:+.2f}R)" if rm != "" else ""
             lines.append(f"  {notify.esc(r['coin'])}: {r['reason']} · {r['pnl_net']:+.2f} USDC{rtxt}")
+        lines.append(_total_line(ctx, b))
         ctx.outbox.add("\n".join(lines))
     return done
+
+
+def _total_line(ctx: Ctx, fbook: dict) -> str:
+    """Total paper (momentum + flush) untuk pesan flush. Tanpa mid (gagal ambil),
+    posisi dinilai di harga terakhir yang diketahui."""
+    try:
+        mids = ctx.info.all_mids()
+    except Exception:  # noqa: BLE001
+        mids = {}
+    mbook = (store.load_json("momentum_paper.json") or {}).get("book") or bk.new_book(ctx.cfg.capital_usdc)
+    m_eq, f_eq = bk.equity(mbook, mids), bk.equity(fbook, mids)
+    return (f"💰 Total paper {notify.usd(m_eq + f_eq)} USDC "
+            f"(momentum {notify.usd(m_eq)} + flush {f_eq:+.2f})")
 
 
 def _flush_event(ctx: Ctx, st: dict, bar: pd.Timestamp, sig: list, out: dict, t: str) -> None:
